@@ -1,0 +1,123 @@
+library(leaflet)
+library(dplyr)
+library(geojsonio)
+library(htmlwidgets)
+
+us=read.csv("united states.csv")
+# Leaflet Map
+# count united states terrorism event
+terrorcount=us %>%
+  group_by(State) %>%
+  count()
+
+# propextent
+catastrophic=filter(us,Propextent=="Catastrophic (likely > $1 billion)")
+major=filter(us,Propextent=="Major (likely > $1 million but < $1 billion)",!is.na(Longitude))
+  
+# load us state map
+states <- geojsonio::geojson_read("gz_2010_us_040_00_20m.json", what = "sp")
+#names(states)
+states$terrorcount=c(32,5,586,43,17,83,
+                     29,4,109,21,18,24,
+                     8,6,24,5,16,31,
+                     22,39,247,3,2,36,
+                     2,15,1,152,15,13,
+                     34,47,30,5,95,5,
+                     19,23,2,4,57,43,
+                     36,23,15,10,504,51,
+                     57,2,4,57)
+
+# color palette
+bins <- c(0, 10, 20, 50, 100, 200, 500, 1000, Inf)
+pal <- colorBin("YlOrRd", domain = states$terrorcount, bins = bins)
+# Format label data for leaflet map
+labels <- sprintf(
+  "<strong>%s</strong><br/>Terror Event Count: %g",
+  states$NAME, states$terrorcount
+) %>% lapply(htmltools::HTML)
+
+# Format popup data for leaflet map
+popup_E=paste0("<strong>Year: </strong>", us$Year, 
+                "<br><strong>City: </strong>", us$City,
+               "<br><strong>Killed: </strong>", us$Killed,
+               "<br><strong>Wounded: </strong>", us$Wounded,
+               "<br><strong>Attack type: </strong>", us$AttackType,
+               "<br><strong>Target: </strong>", us$TargetType,
+               "<br><strong>Weapon: </strong>", us$WeaponType, 
+                "<br><strong>Group: </strong>", us$Group)
+
+popup_M=paste0("<strong>Year: </strong>", major$Year, 
+                "<br><strong>City: </strong>", major$City,
+               "<br><strong>Killed: </strong>", major$Killed,
+               "<br><strong>Wounded: </strong>", major$Wounded,
+               "<br><strong>Attack type: </strong>", major$AttackType,
+               "<br><strong>Target: </strong>", major$TargetType,
+               "<br><strong>Weapon: </strong>", major$WeaponType, 
+                "<br><strong>Group: </strong>", major$Group,
+                "<br><strong>Summary: </strong>", major$Summary)
+
+popup_C=paste0("<strong>Year: </strong>", catastrophic$Year, 
+                "<br><strong>City: </strong>", catastrophic$City,
+               "<br><strong>Killed: </strong>", catastrophic$Killed,
+               "<br><strong>Wounded: </strong>", catastrophic$Wounded,
+               "<br><strong>Attack type: </strong>", catastrophic$AttackType,
+               "<br><strong>Target: </strong>", catastrophic$TargetType,
+               "<br><strong>Weapon: </strong>", catastrophic$WeaponType, 
+                "<br><strong>Group: </strong>", catastrophic$Group,
+                "<br><strong>Summary: </strong>", catastrophic$Summary)
+
+# Icon
+Icon1 <- makeIcon(
+  iconUrl = "marker1.png",
+  iconWidth = 20, iconHeight = 40
+)
+Icon2 <- makeIcon(
+  iconUrl = "marker2.png",
+  iconWidth = 30, iconHeight = 40
+)
+
+
+# Map
+m <- leaflet(states) %>%
+  # base map
+  setView(-96, 37.8, 4) %>%
+  addProviderTiles(providers$OpenStreetMap) %>%
+  addPolygons(
+    # color
+    fillColor = ~pal(terrorcount),
+    weight = 2,
+    opacity = 0.9,
+    color = "white",
+    dashArray = "3",
+    fillOpacity = 0.7,
+    # Adding interaction
+    highlight = highlightOptions(
+    weight = 3,
+    color = "#666",
+    dashArray = "",
+    fillOpacity = 0.7,
+    bringToFront = FALSE),
+    group = "Terror Count",
+    # adding labels
+    label = labels,
+    labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "12px",
+    direction = "auto")
+  ) %>% 
+  # adding legends
+  addLegend(pal = pal, values = ~terrorcount, opacity = 0.7, title = NULL,
+  position = "bottomright") %>% 
+  # Overlay groups
+  addMarkers(data=us,lng=~Longitude, lat=~Latitude, popup=popup_E,icon = Icon1,group = "Terror Events") %>% 
+  addCircleMarkers(data=major,lng=~Longitude, lat=~Latitude, weight =5,stroke = TRUE,fillOpacity = 0.8,popup=popup_M,group = "Major Events")  %>%
+  addMarkers(data=catastrophic,lat=~Latitude, lng=~Longitude, popup=popup_C,icon = Icon2,group = "Catastrophic Events")  %>% 
+  # Layers control
+  addLayersControl(
+    baseGroups = c("Terror Count"),
+    overlayGroups = c("Terror Events","Major Events","Catastrophic Events"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+m
+saveWidget(m, 'US_Terror_Map.html', selfcontained = TRUE)
+```
